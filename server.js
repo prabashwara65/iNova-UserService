@@ -2,8 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const connectDB = require('./src/db/database');
-const userRoutes = require('./src/routes/userRoutes');
 const errorHandler = require('./src/middleware/errorHandler');
+const cookieParser = require('cookie-parser');
 
 dotenv.config();
 
@@ -17,14 +17,34 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-app.use('/api/users', userRoutes);
+// Routes
+app.use('/api/auth', require('./src/routes/auth'));
+app.use('/api/users', require('./src/routes/users'));
 
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     service: 'user-service',
     timestamp: new Date().toISOString()
+  });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal server error',
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Route not found',
   });
 });
 
@@ -48,7 +68,7 @@ app.use((req, res) => {
 
 app.use(errorHandler);
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '127.0.0.1', () => {
   console.log('iNova User Service');
   console.log(`Port: ${PORT}`);
   console.log(`API: http://0.0.0.0:3003/api/users`);
