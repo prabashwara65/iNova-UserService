@@ -1,0 +1,58 @@
+{
+    "family": "inova-userservice-class-definition",
+    "taskRoleArn": "arn:aws:iam::749621714427:role/service-role/ecsTaskExecutionRole",
+    "executionRoleArn": "arn:aws:iam::749621714427:role/service-role/ecsTaskExecutionRole",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "1024",
+    "memory": "3072",
+    "runtimePlatform": {
+        "cpuArchitecture": "X86_64",
+        "operatingSystemFamily": "LINUX"
+    },
+    "containerDefinitions": [
+        {
+            "name": "inova-user_service",
+            "image": "749621714427.dkr.ecr.eu-north-1.amazonaws.com/inova-user_service",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "name": "inova-user_service-3003-tcp",
+                    "containerPort": 3003,
+                    "hostPort": 3003,
+                    "protocol": "tcp",
+                    "appProtocol": "http"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "PORT",
+                    "value": "3003"
+                },
+                {
+                    "name": "MONGODB_URI",
+                    "value": "mongodb+srv://prabashwara65_db_user:6iFfZqrEgNEseKfL@cluster0.h59s5x0.mongodb.net/?appName=Cluster0"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/inova-userservice-class-definition",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "eu-north-1",
+                    "awslogs-stream-prefix": "ecs"
+                },
+                "secretOptions": []
+            },
+            "systemControls": []
+        }
+    ],
+    "volumes": [],
+    "placementConstraints": [],
+    "tags": []
+}

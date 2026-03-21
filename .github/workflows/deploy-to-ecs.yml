@@ -1,0 +1,151 @@
+name: CICD
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: 'eu-north-1'
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        with:
+          mask-password: 'true'
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          REPOSITORY: inova-user_service
+        run: |
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create task definition (without logs)
+        run: |
+          cat > task-definition.json << 'EOF'
+          {
+            "family": "inova-userservice-class-definition",
+            "taskRoleArn": "arn:aws:iam::749621714427:role/service-role/ecsTaskExecutionRole",
+            "executionRoleArn": "arn:aws:iam::749621714427:role/service-role/ecsTaskExecutionRole",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "1024",
+            "memory": "3072",
+            "runtimePlatform": {
+              "cpuArchitecture": "X86_64",
+              "operatingSystemFamily": "LINUX"
+            },
+            "containerDefinitions": [
+              {
+                "name": "inova-user_service",
+                "image": "${{ steps.build-image.outputs.image }}",
+                "portMappings": [
+                  {
+                    "containerPort": 3003,
+                    "protocol": "tcp"
+                  }
+                ],
+                "essential": true,
+                "environment": [
+                  {
+                    "name": "PORT",
+                    "value": "3003"
+                  },
+                  {
+                    "name": "MONGODB_URI",
+                    "value": "${{ secrets.INOVA_MONGO_DB }}"
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+
+      - name: Register task definition
+        id: register-task
+        run: |
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "task-definition-arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+          echo "Registered task definition: $TASK_DEF_ARN"
+
+      - name: Create or update ECS service
+        run: |
+          # Check if service exists
+          if aws ecs describe-services \
+            --cluster user-service-cluster \
+            --services user-service \
+            --region eu-north-1 \
+            --query "services[0].serviceName" \
+            --output text 2>/dev/null | grep -q "user-service"; then
+            # Update existing service
+            echo "Updating existing service..."
+            aws ecs update-service \
+              --cluster user-service-cluster \
+              --service user-service \
+              --task-definition ${{ steps.register-task.outputs.task-definition-arn }} \
+              --force-new-deployment \
+              --region eu-north-1
+          else
+            # Create new service
+            echo "Creating new service..."
+            aws ecs create-service \
+              --cluster user-service-cluster \
+              --service-name user-service \
+              --task-definition ${{ steps.register-task.outputs.task-definition-arn }} \
+              --desired-count 1 \
+              --launch-type FARGATE \
+              --network-configuration "awsvpcConfiguration={subnets=[subnet-02fade94fdfc7697c],securityGroups=[sg-05d58a6bd509505c3],assignPublicIp=ENABLED}" \
+              --region eu-north-1
+          fi
+
+      - name: Wait for service stability
+        run: |
+          echo "Waiting for deployment to stabilize..."
+          sleep 30
+          aws ecs wait services-stable \
+            --cluster user-service-cluster \
+            --services user-service \
+            --region eu-north-1 || true
+
+      - name: Get deployment info
+        run: |
+          TASK_ARN=$(aws ecs list-tasks \
+            --cluster user-service-cluster \
+            --service-name user-service \
+            --query "taskArns[0]" \
+            --output text)
+          
+          if [ "$TASK_ARN" != "None" ] && [ -n "$TASK_ARN" ]; then
+            PUBLIC_IP=$(aws ecs describe-tasks \
+              --cluster user-service-cluster \
+              --tasks $TASK_ARN \
+              --query "tasks[0].attachments[0].details[?name=='publicIPv4Address'].value" \
+              --output text)
+            
+            echo "✅ User Service deployed successfully!"
+            echo "📍 URL: http://$PUBLIC_IP:3003"
+            echo "💚 Health Check: http://$PUBLIC_IP:3003/health"
+            echo "📋 API Endpoint: http://$PUBLIC_IP:3003/api/users"
+          else
+            echo "⚠️  No tasks found. Check the service status in AWS Console"
+            echo "Go to: https://eu-north-1.console.aws.amazon.com/ecs/home?region=eu-north-1#/clusters/user-service-cluster/services"
+          fi
