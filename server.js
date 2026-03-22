@@ -4,20 +4,41 @@ const dotenv = require('dotenv');
 const connectDB = require('./src/db/database');
 const errorHandler = require('./src/middleware/errorHandler');
 const cookieParser = require('cookie-parser');
+const { register } = require('./src/controllers/userController');
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3004;
 
-connectDB();
+const allowedOrigins = new Set([
+  process.env.FRONTEND_URL || 'http://localhost:5173',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+]);
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000'
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+
+    const isLocalhost =
+      /^http:\/\/localhost:\d+$/.test(origin) ||
+      /^http:\/\/127\.0\.0\.1:\d+$/.test(origin);
+
+    if (allowedOrigins.has(origin) || isLocalhost) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Public compatibility route for API Gateway mappings like /api/register
+app.post('/api/register', register);
 
 
 // Routes
@@ -69,8 +90,19 @@ app.use((req, res) => {
 
 app.use(errorHandler);
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('iNova User Service');
-  console.log(`Port: ${PORT}`);
-  console.log(`API: http://0.0.0.0:3003/api/users`);
-});
+const startServer = async () => {
+  try {
+    await connectDB();
+
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log('iNova User Service');
+      console.log(`Port: ${PORT}`);
+      console.log(`API: http://localhost:${PORT}/api/users`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error.message);
+    process.exit(1);
+  }
+};
+
+startServer();

@@ -1,15 +1,27 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById } = require('../controllers/userController');
+const {
+  register,
+  getAllUsers,
+  getUserById,
+  deleteUserById,
+  updateUserStatus,
+} = require('../controllers/userController');
 const { protect, authorize } = require('../middleware/auth');
 
-// All routes require authentication
-router.use(protect);
+// Public route for API Gateway pattern: /api/users/register
+router.post('/register', register);
 
 // Get all users (Admin only)
-router.get('/', authorize('admin'), getAllUsers);
+router.get('/', protect, authorize('admin'), getAllUsers);
 
 // Get user by ID
-router.get('/:id', getUserById);
+router.get('/:id', protect, getUserById);
+
+// Delete user by ID (Admin only)
+router.delete('/:id', protect, authorize('admin'), deleteUserById);
+
+// Update user status by ID (Admin only)
+router.put('/:id/status', protect, authorize('admin'), updateUserStatus);
 
 module.exports = router;
