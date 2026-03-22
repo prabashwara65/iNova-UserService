@@ -38,7 +38,7 @@ exports.register = async (req, res) => {
       name,
       email,
       password,
-      role: 'user', // Default role is user
+      role: 'admin', // Default role is user
     });
 
     // Send token response

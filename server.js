@@ -19,6 +19,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+
 // Routes
 app.use('/api/auth', require('./src/routes/auth'));
 app.use('/api/users', require('./src/routes/users'));
@@ -68,7 +69,7 @@ app.use((req, res) => {
 
 app.use(errorHandler);
 
-app.listen(PORT, '127.0.0.1', () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log('iNova User Service');
   console.log(`Port: ${PORT}`);
   console.log(`API: http://0.0.0.0:3003/api/users`);
